@@ -1,0 +1,8 @@
+{
+  "name": "nexus-alfa",
+  "version": "1.0.0",
+  "description": "ALFA — Agente Superior de IA Táctica (NEXUS next-gen)",
+  "main": "alfa.js",
+  "scripts": { "start": "node alfa.js" },
+  "engines": { "node": ">=18" }
+}
