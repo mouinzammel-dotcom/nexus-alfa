@@ -760,6 +760,12 @@ canvas{display:block}
 #sbtn:hover{background:var(--gold);color:#000}#sbtn:disabled{background:transparent;color:var(--dim);border-color:var(--border);cursor:not-allowed}
 
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,68,68,.6)}70%{box-shadow:0 0 0 8px rgba(255,68,68,0)}}
+#micbtn{background:rgba(200,168,75,.08);border:1px solid rgba(200,168,75,.2);color:var(--gold);padding:6px 10px;border-radius:1px;cursor:pointer;font-size:13px;transition:.2s;flex-shrink:0}
+#micbtn:hover{background:rgba(200,168,75,.2)}
+#micbtn.active{background:rgba(204,34,34,.15);border-color:var(--red2);color:var(--red2);animation:mic-pulse 1.2s infinite}
+.tts-btn{background:none;border:1px solid var(--border);color:var(--dim);padding:1px 6px;font-size:9px;cursor:pointer;font-family:inherit;border-radius:1px;transition:.15s;letter-spacing:1px}
+.tts-btn.on{border-color:var(--gold);color:var(--gold);background:rgba(200,168,75,.08)}
 </style>
 </head>
 <body>
@@ -773,6 +779,7 @@ canvas{display:block}
     <div class="ind"><span class="dot" id="d-ol"></span>OLLAMA</div>
     <div class="ind"><span class="dot" id="d-sys"></span>LOCAL</div>
     <div id="clock">--:--:--</div>
+    <button class="tts-btn" id="ttsbtn" onclick="toggleTTS()" title="Activar/desactivar voz">🔊 VOZ</button>
   </div>
 </div>
 
@@ -865,6 +872,7 @@ Ejecuto sin pedir permiso. Dame la orden.</div></div>
         <textarea id="inp" placeholder="Orden directa..." rows="1"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"
           oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+        <button id="micbtn" onclick="toggleMic()" title="Hablar con ALFA">🎙</button>
         <button id="sbtn" onclick="send()">▶ EXEC</button>
       </div>
     </div>
@@ -1008,6 +1016,122 @@ async function send(){
 }
 function q(txt){inp.value=txt;send();}
 function clearChat(){msgsEl.innerHTML='<div class="msg alfa"><div class="mhdr"><span>ALFA</span><span>'+ts()+'</span></div><div class="mbody">Chat limpiado. En posición.</div></div>';}
+
+// ── VOZ INPUT (SpeechRecognition) ──────────────────────────────────────────
+let recognition=null, micActive=false;
+const micBtn=document.getElementById('micbtn');
+
+function initSpeech(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){micBtn.title='Voz no soportada en este navegador';micBtn.style.opacity='.3';return null;}
+  const r=new SR();
+  r.lang='es-ES'; r.continuous=false; r.interimResults=true; r.maxAlternatives=1;
+  r.onstart=()=>{
+    micActive=true; micBtn.classList.add('active');
+    setMode('thinking','voz'); inp.placeholder='Escuchando...';
+  };
+  r.onresult=(e)=>{
+    let interim='',final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript;
+      else interim+=e.results[i][0].transcript;
+    }
+    inp.value=final||interim;
+    inp.style.height='auto'; inp.style.height=Math.min(inp.scrollHeight,80)+'px';
+  };
+  r.onend=()=>{
+    micActive=false; micBtn.classList.remove('active');
+    inp.placeholder='Orden directa...'; setMode('idle');
+    const txt=inp.value.trim();
+    if(txt) send();
+  };
+  r.onerror=(e)=>{
+    micActive=false; micBtn.classList.remove('active');
+    inp.placeholder='Orden directa...'; setMode('idle');
+    if(e.error!=='no-speech') addMsg('alfa','⚠ Micrófono: '+e.error+'. Verifica permisos del navegador.');
+  };
+  return r;
+}
+
+function toggleMic(){
+  if(!recognition) recognition=initSpeech();
+  if(!recognition) return;
+  if(micActive){ recognition.stop(); return; }
+  try{ recognition.start(); }
+  catch(e){ recognition=initSpeech(); try{recognition.start();}catch(e2){} }
+}
+
+// ── VOZ OUTPUT / TTS (SpeechSynthesis) ────────────────────────────────────
+let ttsEnabled=false;
+let ttsVoice=null;
+
+function loadVoices(){
+  const voices=speechSynthesis.getVoices();
+  // Preferimos voz masculina en español
+  ttsVoice = voices.find(v=>v.lang.startsWith('es')&&v.name.toLowerCase().includes('male'))
+    || voices.find(v=>v.lang.startsWith('es'))
+    || voices.find(v=>v.lang.startsWith('en')&&v.name.toLowerCase().includes('male'))
+    || voices[0]||null;
+}
+loadVoices();
+if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=loadVoices;
+
+function toggleTTS(){
+  ttsEnabled=!ttsEnabled;
+  const btn=document.getElementById('ttsbtn');
+  btn.classList.toggle('on',ttsEnabled);
+  btn.textContent=ttsEnabled?'🔊 VOZ ON':'🔊 VOZ';
+  if(!ttsEnabled) speechSynthesis.cancel();
+}
+
+function speakText(text){
+  if(!ttsEnabled||!text) return;
+  speechSynthesis.cancel();
+  // Limpiar texto: quitar emojis, símbolos técnicos y líneas de ejecución de tools
+  const clean=text
+    .replace(/<<[^>]+>>/g,'')
+    .replace(/⚡\s*\[[^\]]+\][^\n]*/g,'')
+    .replace(/[⚡🔴🧠🎯🛡📋🔍🚨⭐✕●○►◄╔╗╚╝║]/g,'')
+    .replace(/\[RESULTADO[^\]]*\][^\n]*/g,'')
+    .replace(/→[^\n]*/g,'')
+    .replace(/\s+/g,' ').trim()
+    .slice(0,600); // no más de 600 chars para no aburrir
+  if(!clean) return;
+  const utt=new SpeechSynthesisUtterance(clean);
+  utt.lang='es-ES'; utt.rate=1.0; utt.pitch=0.85; utt.volume=1;
+  if(ttsVoice) utt.voice=ttsVoice;
+  speechSynthesis.speak(utt);
+}
+
+// ── Patch send() para llamar speakText al terminar ─────────────────────────
+const _origSend=send;
+window.send=async function(){
+  const txt=inp.value.trim(); if(!txt||sbtn.disabled) return;
+  inp.value='';inp.style.height='auto';sbtn.disabled=true;
+  addMsg('user',txt);setMode('thinking');
+  const bodyEl=addMsg('alfa','');bodyEl.textContent='';
+  let taskInfo='',fullText='';
+  try{
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:txt})});
+    const reader=r.body.getReader(),dec=new TextDecoder();
+    bodyEl.classList.remove('thinking');setMode('speaking');
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      dec.decode(value).split('\\n').forEach(line=>{
+        if(!line.startsWith('data: ')) return;
+        const d=line.slice(6).trim(); if(d==='[DONE]') return;
+        try{const o=JSON.parse(d);
+          if(o.meta){taskInfo=\`\${o.meta.task}·\${o.meta.engine}\`;document.getElementById('engbadge').textContent=o.meta.engine?.toUpperCase()||'—';setMode('speaking',o.meta.task);return;}
+          if(o.delta){fullText+=o.delta;bodyEl.textContent=fullText;msgsEl.scrollTop=msgsEl.scrollHeight;}}catch(e){}
+      });
+    }
+    if(taskInfo) bodyEl.parentElement.querySelector('.mhdr span:last-child').textContent=taskInfo+' '+ts();
+    speakText(fullText);
+  }catch(e){bodyEl.classList.remove('thinking');bodyEl.textContent='Error: '+e.message;}
+  setMode('idle');sbtn.disabled=false;inp.focus();
+};
+// Reemplazar el onclick también
+document.getElementById('sbtn').onclick=window.send;
 </script>
 </body>
 </html>`;
