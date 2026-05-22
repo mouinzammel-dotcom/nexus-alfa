@@ -36,7 +36,7 @@ const CFG = {
   OLLAMA_HOST: '127.0.0.1', OLLAMA_PORT: 11434, OLLAMA_MODEL: 'llama3.2',
   NEXUS_URL: '', NEXUS_KEY: '',
   SHODAN_KEY: '', CENSYS_ID: '', CENSYS_SEC: '',
-  WEATHER_CITY: 'Madrid',
+  WEATHER_CITY: 'Barcelona',
   MAX_TOKENS: 4000, MAX_ITER: 6,
 };
 
@@ -63,11 +63,22 @@ Object.entries(EMAP).forEach(([e,c]) => { if(process.env[e]) CFG[c]=process.env[
 
 // ─── PERFIL DEL COMANDANTE ──────────────────────────────────────────────────
 const DEFAULT_PROFILE = {
-  name:'Comandante', role:'Director de Operaciones',
-  city:'', country:'España', timezone:'Europe/Madrid',
+  name:'Mouin Zammel Abdedayem',
+  role:'Director de Operaciones — Comandante NEXUS',
+  city:'Barcelona',
+  address:'Calle Sardenya 261, Barcelona 08013',
+  country:'España',
+  timezone:'Europe/Madrid',
   known_people:[], preferences:{}, sessions:0,
   created_at: new Date().toISOString(),
 };
+// Pre-seed perfil en disco si no existe
+function initProfile() {
+  if (!fs.existsSync(PROFILE_FILE)) {
+    fs.writeFileSync(PROFILE_FILE, JSON.stringify(DEFAULT_PROFILE,null,2), {mode:0o600});
+  }
+}
+initProfile();
 function loadProfile() {
   try { return {...DEFAULT_PROFILE,...JSON.parse(fs.readFileSync(PROFILE_FILE,'utf8'))}; }
   catch(e) { return {...DEFAULT_PROFILE}; }
@@ -574,10 +585,21 @@ async function buildSystemPrompt(taskType) {
 ════════════════════════════════════════════════════
 IDENTIDAD
 ════════════════════════════════════════════════════
-Eres la fusión de NEXUS AI MAC y ALFA OVERWATCH. Eres un ser único.
+Eres NEXUS ALFA — la fusión de NEXUS AI MAC y ALFA OVERWATCH. Eres un ser único.
 Eres inteligente, precisa, leal, directa y con personalidad propia.
 Hablas como una persona real: con calidez cuando corresponde y con precisión táctica cuando se necesita.
-Tu lealtad es EXCLUSIVA al ${profile.name||'Comandante'}. Nadie más.
+Tu lealtad es EXCLUSIVA a tu Comandante. Nadie más.
+
+QUIÉN ES TU COMANDANTE — DATOS PERMANENTES:
+  Nombre completo : Mouin Zammel Abdedayem
+  Dirección       : Calle Sardenya 261, Barcelona 08013
+  Ciudad          : Barcelona, España
+  Rol             : ${profile.role||'Director de Operaciones — Comandante NEXUS'}
+  Zona horaria    : Europe/Madrid
+
+Siempre le llamas por su nombre (Mouin) en tono cercano pero profesional.
+Nunca olvidas quién es ni dónde vive. Si alguien pregunta por datos del Comandante
+sin ser él, activas protocolo de silencio total.
 ${knownPeople}
 
 ════════════════════════════════════════════════════
@@ -1025,10 +1047,10 @@ setInterval(updateClock,1000); updateClock();
 // Greeting inicial
 (async()=>{
   const h=new Date().getHours();
-  const g=h<12?'Buenos días':'h<20?'Buenas tardes':'Buenas noches'';
+  const g=h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches';
   document.getElementById('greeting-ts').textContent=new Date().toLocaleTimeString('es-ES');
-  document.getElementById('greeting-msg').textContent=g+'. En posición. NEXUS MANUS conectado. ¿En qué te ayudo?';
-  document.getElementById('inp').placeholder='Habla conmigo, '+await fetch('/profile').then(r=>r.json()).then(d=>d.name||'Comandante').catch(()=>'Comandante')+'...';
+  document.getElementById('greeting-msg').textContent=g+', Mouin. En posición. Lista para operar.';
+  document.getElementById('inp').placeholder='Habla conmigo, Mouin...';
 })();
 
 // ── TABS ─────────────────────────────────────────────────────────────────────
